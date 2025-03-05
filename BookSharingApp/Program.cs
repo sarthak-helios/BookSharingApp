@@ -4,6 +4,7 @@ using BookSharingApp.Data;
 using BookSharingApp.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 
@@ -13,19 +14,46 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddCors(options => { options.AddPolicy("AllowAll", policy => { policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod(); }); });
 builder.Services.AddDbContext<AppDbContext>(options => options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
-// --- Improved JWT Secret Handling ---
-string jwtSecret = builder.Configuration["JwtSettings:secret"] ?? string.Empty; // Get the secret, handle null
-if (string.IsNullOrWhiteSpace(jwtSecret))
-{
-    throw new InvalidOperationException("JWT secret key is missing or empty in configuration."); // Critical: Fail fast
-}
-
-// --- END Improved JWT Secret Handling ---
-
-
 builder.Services.AddSingleton(new EmailService());
-builder.Services.AddSingleton(new JWTService(builder.Configuration)); //Pass config
 builder.Services.AddSingleton(new OTPService());
+
+var jwtSettings = new JWTSettings();
+builder.Configuration.GetSection("JwtSettings").Bind(jwtSettings);
+builder.Services.AddSingleton(jwtSettings);
+builder.Services.AddSingleton(new JWTService(jwtSettings));
+
+
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer(c =>
+{
+    c.UseSecurityTokenValidators = true;
+    c.SaveToken = true;
+    c.TokenValidationParameters = new TokenValidationParameters
+    {
+        ValidateIssuer = false,
+        ValidateAudience = false,
+        ValidateLifetime = true,
+        ValidateIssuerSigningKey = true,
+        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings.Key))
+    };
+    c.Events = new JwtBearerEvents
+    {
+        OnAuthenticationFailed = context =>
+        {
+            Console.WriteLine($"Authentication failed: {context.Exception.Message}");
+            return Task.CompletedTask;
+        },
+        OnChallenge = context =>
+        {
+            context.Response.Headers.Append("WWW-Authenticate", "Bearer");
+            context.HandleResponse(); // Prevents default response
+            context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            return context.Response.WriteAsync("Custom unauthorized response");
+        }
+    };
+});
+
+builder.Services.AddAuthorization();
+
 builder.Services.AddControllers();
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
@@ -57,27 +85,6 @@ builder.Services.AddSwaggerGen(c =>
         }
     });
 });
-
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(options =>
-    {
-        options.TokenValidationParameters = new TokenValidationParameters
-        {
-            ValidateIssuer = false,
-            ValidateAudience = false,
-            ValidateLifetime = true,
-            ValidateIssuerSigningKey = true,
-            //ValidIssuer = builder.Configuration["JwtSettings:validIssuer"],
-            //ValidAudience = builder.Configuration["JwtSettings:validAudience"],
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret)), // Use the retrieved secret
-            
-        };
-        options.UseSecurityTokenValidators = true;
-        options.SaveToken = true;
-    });
-
-
-builder.Services.AddAuthorization();
 
 
 var app = builder.Build();

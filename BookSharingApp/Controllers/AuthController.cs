@@ -95,7 +95,7 @@ namespace BookSharingApp.Controllers
                                     </div>
                                 </body>
                                 </html>";
-                data.ResetToken = $"{OTP}-{DateTime.UtcNow.AddMinutes(15)}";
+                data.ResetToken = $"{OTP}@{DateTime.UtcNow.AddMinutes(15)}";
                 await _context.SaveChangesAsync();
 
                 EmailService.SendEmail(To, Sub, Body);
@@ -109,6 +109,8 @@ namespace BookSharingApp.Controllers
             }
         }
 
+
+
         [HttpPost("verify-otp")]
         public async Task<IActionResult> VerifyOTPUser(VerifyUserDTO user)
         {
@@ -121,7 +123,7 @@ namespace BookSharingApp.Controllers
                     return Unauthorized(new { msg = "User not Found or is deactivated." });
                 }
 
-                string[] OTP = data.ResetToken.Split("-");
+                string[] OTP = data.ResetToken.Split("@");
                 if (OTP[0] != user.OTP)
                 {
                     return Unauthorized(new { msg = "Invalid OTP. Please try again." });
@@ -158,21 +160,19 @@ namespace BookSharingApp.Controllers
             }
         }
 
+
+
         [HttpGet("profile")]
         [Authorize]
         public async Task<IActionResult> GetProfile()
         {
             try
-            {   
-                foreach (var claim in User.Claims)
-                {
-                    Console.WriteLine($"{claim.Type}: {claim.Value}");
-                }
-                int userId = int.Parse(User.FindFirst("Id")?.Value ?? "-1");
-                int clubId = int.Parse(User.FindFirstValue(ClaimTypes.Email) ?? "-1");
-                //int clubId = int.Parse(User.FindFirst("Id2")?.Value ?? "-1");
+            {
+                string[] userdata = User.FindFirst("Id").Value.Split("@");
+                int userId = int.Parse(userdata[0]);
+                int clubId = int.Parse(userdata[1]);
                 var data = await _context.ClubUsers
-                    .Where(x => x.UserId == userId && x.ClubId == clubId)
+                    .Where(x => x.UserId == userId && x.ClubId == clubId && x.User.IsActive && x.Club.IsActive)
                     .Select(u => new
                     {
                         u.Role,
@@ -199,6 +199,117 @@ namespace BookSharingApp.Controllers
                 Console.WriteLine(ex.Message);
                 return BadRequest(new { ex.Message });
             }
+        }
+
+
+
+        [HttpPatch("forgot-password")]
+        public async Task<IActionResult> ForgotPass(ForgotPassDTO data)
+        {
+            try
+            {
+                var user = await _context.Users.Where(x => x.Email == data.Email).FirstOrDefaultAsync();
+                if (user == null) { 
+                    return BadRequest(new {msg="Email not found or Account might not exist on this Email."});
+                }
+                string OTP = OTPService.GenerateOTP();
+                user.ResetToken = $"{OTP}@{DateTime.UtcNow.AddMinutes(15)}";
+                string To = user.Email;
+                string Sub = "OTP for BookShareApp";
+                string Body = $@"
+                                <!DOCTYPE html>
+                                <html lang='en'>
+                                <head>
+                                    <meta charset='UTF-8'>
+                                    <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+                                    <title>Password Reset Verification</title>
+                                    <style>
+                                        body {{
+                                            font-family: Arial, sans-serif;
+                                            margin: 0;
+                                            padding: 0;
+                                            max-width: 100svw;
+                                            background-color: #f4f4f4;
+                                        }}
+                                        .container {{
+                                            width: 100%;
+                                            max-width: 600px;
+                                            margin: 0 auto;
+                                            background-color: #ffffff;
+                                            padding: 20px;
+                                            border-radius: 8px;
+                                            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+                                        }}
+                                        .content {{
+                                            margin: 20px 0;
+                                            font-size: 16px;
+                                            line-height: 1.5;
+                                        }}
+                                        .otp-code {{
+                                            font-size: 24px;
+                                            font-weight: bold;
+                                            color: #333;
+                                        }}
+                                        .footer {{
+                                            text-align: center;
+                                            margin-top: 30px;
+                                            font-size: 14px;
+                                            color: #777;
+                                        }}
+                                    </style>
+                                </head>
+                                <body>
+                                    <div class='container'>
+                                        <div class='content'>
+                                            <p>Dear {user.Name},</p>
+                                            <p>Your OTP code is <span class='otp-code'>{OTP}</span>.</p>
+                                            <p>Please enter this code to Proceed.</p>
+                                        </div>
+                                        <div class='footer'>
+                                            <p>Thank you for using our service!</p>
+                                        </div>
+                                    </div>
+                                </body>
+                                </html>";
+                await _context.SaveChangesAsync();
+                EmailService.SendEmail(To, Sub, Body);
+                return Ok(new { msg = "OTP sent to your Mail." });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { msg = ex.Message });
+            }
+        }
+
+
+
+        [HttpPatch("reset-password")]
+        public async Task<IActionResult> ResetPassWord(ResetPassDTO data)
+        {
+            var user = await _context.Users
+                .Where(x => x.Email == data.Email)
+                .FirstOrDefaultAsync();
+
+            if (user == null || user.ResetToken == null)
+            {
+                return BadRequest(new { msg = "Invalid OTP or Email." });
+            }
+
+            string[] tokenParts = user.ResetToken.Split("@");
+            if (tokenParts[0] != data.OTP)
+            {
+                return BadRequest(new { msg = "Invalid OTP or Email." });
+            }
+            if (DateTime.Parse(tokenParts[1]) < DateTime.UtcNow)
+            {
+                return BadRequest(new { msg = "Otp expired. Please try again." });
+            }
+
+            user.Password = data.Password;
+            user.ResetToken = null;
+            await _context.SaveChangesAsync();
+
+            return Ok(new { msg = "Password reset successfully." });
         }
     }
 }

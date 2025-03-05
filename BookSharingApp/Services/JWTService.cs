@@ -9,36 +9,30 @@ namespace BookSharingApp.Services
 {
     public class JWTService
     {
-        private readonly IConfiguration _config; // Keep IConfiguration
+        private readonly JWTSettings _jwtSettings; // Keep IConfiguration
 
         public const string ClubIdClaimType = "ClubId";
 
-        public JWTService(IConfiguration config)
+        public JWTService(JWTSettings jwtSettings)
         {
-            _config = config;
+            _jwtSettings = jwtSettings;
         }
 
         public string IssueToken(UserModel data, int ClubId, string role)
         {
-            string jwtKey = _config["JwtSettings:secret"] ?? string.Empty; // Get directly from config, handle nulls.
-
-            if (string.IsNullOrWhiteSpace(jwtKey))
+            
+            var claims = new[]
             {
-                throw new InvalidOperationException("JWT secret key is missing or empty in JWTService.");
-            }
-            var secKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey));
-            var creds = new SigningCredentials(secKey, SecurityAlgorithms.HmacSha256);
-            var claims = new List<Claim>
-            {
-                new Claim("Id",data.Id.ToString()),
-                new Claim(ClaimTypes.Email, data.Email),
+                new Claim("Id",data.Id.ToString()+"@"+ClubId),
                 new Claim(ClaimTypes.Role, role),
-                new Claim(ClaimTypes.Name,ClubId.ToString())
             };
 
+            var secKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_jwtSettings.Key));
+            var creds = new SigningCredentials(secKey, SecurityAlgorithms.HmacSha256);
+
             var token = new JwtSecurityToken(
-                    issuer: _config["JwtSettings:validIssuer"],
-                    audience: _config["JwtSettings:validAudience"],
+                    issuer: _jwtSettings.Issuer,
+                    audience: _jwtSettings.Audience,
                     claims: claims,
                     expires: DateTime.Now.AddDays(120),
                     signingCredentials: creds

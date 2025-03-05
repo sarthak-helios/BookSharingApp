@@ -16,4 +16,15 @@ namespace BookSharingApp.DTOs
         public int ClubId { get; set; }
         public string OTP { get; set; } = string.Empty;
     }
+    
+    public class ForgotPassDTO
+    {
+        public string Email { get; set; } = string.Empty;
+    }
+    public class ResetPassDTO
+    {
+        public string Email { get; set; } = string.Empty;
+        public string OTP { get; set; } = string.Empty;
+        public string Password { get; set; } = string.Empty;
+    }
 }
