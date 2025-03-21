@@ -168,6 +168,11 @@ namespace BookSharingApp.Controllers
         {
             try
             {
+                if (!User.Identity.IsAuthenticated)
+                {
+                    return Unauthorized(new { msg = "User is not authenticated." });
+                }
+
                 string[] userdata = User.FindFirst("Id").Value.Split("@");
                 int userId = int.Parse(userdata[0]);
                 int clubId = int.Parse(userdata[1]);
@@ -192,7 +197,7 @@ namespace BookSharingApp.Controllers
                     })
                     .FirstOrDefaultAsync();
 
-                return Ok(new {data,msg="Profile data retrieved successfully."});
+                return Ok(new { data, msg = "Profile data retrieved successfully." });
             }
             catch (Exception ex)
             {

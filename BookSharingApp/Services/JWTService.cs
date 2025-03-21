@@ -18,13 +18,16 @@ namespace BookSharingApp.Services
             _jwtSettings = jwtSettings;
         }
 
-        public string IssueToken(UserModel data, int ClubId, string role)
+        public string IssueToken(UserModel data, int ClubId, string Role)
         {
-            
+
             var claims = new[]
             {
                 new Claim("Id",data.Id.ToString()+"@"+ClubId),
-                new Claim(ClaimTypes.Role, role),
+                new Claim(ClaimTypes.Role, Role),
+                new Claim("Role",Role),
+                new Claim(ClaimsIdentity.DefaultRoleClaimType, Role),
+                new Claim(ClaimsIdentity.DefaultNameClaimType,data.Email)
             };
 
             var secKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_jwtSettings.Key));

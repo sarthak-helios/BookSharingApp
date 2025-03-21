@@ -5,6 +5,7 @@ using SixLabors.ImageSharp.Formats.Jpeg;
 using SixLabors.ImageSharp.Formats.Png;
 using SixLabors.ImageSharp.Formats;
 using SixLabors.ImageSharp.Processing;
+using Microsoft.AspNetCore.Authorization;
 
 namespace BookSharingApp.Controllers
 {
@@ -19,6 +20,10 @@ namespace BookSharingApp.Controllers
             {
                 string folder = Path.Combine(_env.WebRootPath, "images");
                 string filePath = Path.Combine(folder, file);
+                if (s>=4000)
+                {
+                    s=4000;
+                }
                 if (!System.IO.File.Exists(filePath))
                 {
                     return NotFound();
@@ -63,6 +68,34 @@ namespace BookSharingApp.Controllers
             {
                 return BadRequest(new { ex.Message });
             }
+        }
+
+        [HttpPost("upload")]
+        public async Task<IActionResult> UploadFile(IFormFile file)
+        {
+            try
+            {
+                string folder = Path.Combine(_env.WebRootPath, "images");
+                if (!Directory.Exists(folder))
+                {
+                    Directory.CreateDirectory(folder);
+                }
+
+                string fileName = Guid.NewGuid().ToString() + "." + file.FileName.Split('.')[^1];
+                string filePath = Path.Combine(folder, fileName);
+
+                using (var stream = new FileStream(filePath, FileMode.CreateNew, FileAccess.ReadWrite))
+                {
+                    await file.CopyToAsync(stream);
+                }
+
+                return Ok(new { file=fileName });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { msg = ex.Message });
+            }
+
         }
     }
 }
